@@ -3,6 +3,7 @@ import java.awt.*;
 import java.awt.geom.Path2D;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
+import java.util.Arrays;
 
 public class DemoViewer {
     public static void main(String[] args) {
@@ -73,6 +74,10 @@ public class DemoViewer {
 
                 BufferedImage img = new BufferedImage(getWidth(), getHeight(), BufferedImage.TYPE_INT_ARGB);
 
+                double[] zBuffer = new double[img.getWidth() * img.getHeight()];
+                // initialize array with extremely far away depths
+                Arrays.fill(zBuffer, Double.NEGATIVE_INFINITY);
+
                 for(Triangle t : tris) {
                     Vertex v1 = transform.transform(t.v1);
                     Vertex v2 = transform.transform(t.v2);
@@ -86,6 +91,22 @@ public class DemoViewer {
                     v2.y += getHeight() / 2;
                     v3.x += getWidth() / 2;
                     v3.y += getHeight() / 2;
+
+                    Vertex ab = new Vertex(v2.x - v1.x, v2.y - v1.y, v2.z - v1.z);
+                    Vertex ac = new Vertex(v3.x - v1.x, v3.y - v1.y, v3.z - v1.z);
+                    Vertex norm = new Vertex(
+                            ab.y * ac.z - ab.z * ac.y,
+                            ab.z * ac.x - ab.x * ac.z,
+                            ab.x * ac.y - ab.y * ac.x
+                    );
+
+                    double normalLength = Math.sqrt(
+                            norm.x * norm.x + norm.y * norm.y + norm.z * norm.z);
+                    norm.x /= normalLength;
+                    norm.y /= normalLength;
+                    norm.z /= normalLength;
+
+                    double angleCos = Math.abs(norm.z);
 
                     // compute rectangular bounds for triangle
                     int minX = (int) Math.max(0, Math.ceil(Math.min(v1.x, Math.min(v2.x, v3.x))));
@@ -107,7 +128,12 @@ public class DemoViewer {
                             double b3 =
                                     ((y - v2.y) * (v1.x - v2.x) + (v1.y - v2.y) * (v2.x - x)) / triangleArea;
                             if (b1 >= 0 && b1 <= 1 && b2 >= 0 && b2 <= 1 && b3 >= 0 && b3 <= 1) {
-                                img.setRGB(x, y, t.color.getRGB());
+                                double depth = b1 * v1.z + b2 * v2.z + b3 * v3.z;
+                                int zIndex = y * img.getWidth() + x;
+                                if (zBuffer[zIndex] < depth) {
+                                    img.setRGB(x, y, getShade(t.color, angleCos).getRGB());
+                                    zBuffer[zIndex] = depth;
+                                }
                             }
                         }
                     }
@@ -124,5 +150,17 @@ public class DemoViewer {
         pane.add(renderPanel, BorderLayout.CENTER);
         frame.setSize(400, 400);
         frame.setVisible(true);
+    }
+
+    static public Color getShade(Color color, double shade) {
+        double redLinear = Math.pow(color.getRed(), 2.4) * shade;
+        double greenLinear = Math.pow(color.getGreen(), 2.4) * shade;
+        double blueLinear = Math.pow(color.getBlue(), 2.4) * shade;
+
+        int red = (int) Math.pow(redLinear, 1/2.4);
+        int green = (int) Math.pow(greenLinear, 1/2.4);
+        int blue = (int) Math.pow(blueLinear, 1/2.4);
+
+        return new Color(red, green, blue);
     }
 }
